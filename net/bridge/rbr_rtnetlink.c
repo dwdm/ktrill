@@ -36,6 +36,12 @@ int rbr_set_data(struct net_device *dev, struct nlattr *tb[],
 			br->rbr->nick = htons(nick);
 		spin_unlock_bh(&br->lock);
 	}
+	if (data[IFLA_TRILL_ROOT]) {
+		if (!br->rbr)
+			return -EINVAL;
+		nick = nla_get_u16(data[IFLA_TRILL_ROOT]);
+		err = set_treeroot(br->rbr, htons(nick));
+	}
 
 	return 0;
 fail:

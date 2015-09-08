@@ -907,6 +907,7 @@ int br_getlink(struct sk_buff *skb, u32 pid, u32 seq, struct net_device *dev,
 /* rbr_netlink.c */
 int rbr_set_data(struct net_device *dev, struct nlattr *tb[],
 		 struct nlattr *data[]);
+void rbr_notify_vni(struct net_bridge *);
 #endif
 
 #ifdef CONFIG_SYSFS

@@ -35,6 +35,7 @@ int rbr_set_data(struct net_device *dev, struct nlattr *tb[],
 		if (VALID_NICK(nick))
 			br->rbr->nick = htons(nick);
 		spin_unlock_bh(&br->lock);
+		rbr_notify_vni(br);
 	}
 	if (data[IFLA_TRILL_ROOT]) {
 		if (!br->rbr)
@@ -91,3 +92,61 @@ fail:
 	pr_warn("rbr_set_data FAILED\n");
 	return err;
 }
+
+#ifdef CONFIG_TRILL_VNT
+void rbr_notify_vni(struct net_bridge *br)
+{
+	struct net *net;
+	struct sk_buff *skb;
+	int err = -ENOBUFS;
+	struct nlmsghdr *nlh;
+	struct ifinfomsg *hdr;
+	int count, i;
+	u32 *vnis;
+	struct vni *vni;
+	size_t size, skb_size;
+
+	net = dev_net(br->dev);
+	count = 0;
+
+	list_for_each_entry(vni, &br->vni_list, list) {
+		count++;
+	}
+	size =  sizeof(uint32_t) * count;
+	vnis = kzalloc(size, GFP_KERNEL);
+	i = 0;
+	list_for_each_entry(vni, &br->vni_list, list) {
+		vnis[i] = (u_int32_t)vni->vni_id;
+		i++;
+	}
+	skb_size = size + NLMSG_ALIGN(sizeof(struct ifinfomsg));
+	skb = nlmsg_new(skb_size, GFP_ATOMIC);
+	if (!skb)
+		goto errout;
+
+	nlh = nlmsg_put(skb, 0, 0, RTM_NEWLINK, sizeof(*hdr), 0);
+	if (!nlh) {
+		err = -EMSGSIZE;
+		goto errout;
+	}
+
+	hdr = nlmsg_data(nlh);
+	hdr->ifi_family = AF_BRIDGE;
+	hdr->__ifi_pad = 0;
+	hdr->ifi_type = br->dev->type;
+	hdr->ifi_index = br->dev->ifindex;
+	hdr->ifi_flags = dev_get_flags(br->dev);
+	hdr->ifi_change = 0;
+
+	nla_put(skb, IFLA_TRILL_VNI, sizeof(uint32_t) * count, vnis);
+	kfree(vnis);
+	nlmsg_end(skb, nlh);
+
+	rtnl_notify(skb, net, 0, RTNLGRP_TRILL, NULL, GFP_ATOMIC);
+	return;
+
+errout:
+	pr_warn("rbr: failed to notify vni list\n");
+	rtnl_set_sk_err(net, RTNLGRP_TRILL, err);
+}
+#endif
